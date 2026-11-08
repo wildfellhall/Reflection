@@ -1,0 +1,29 @@
+Honiton lace photograph
+The Metropolitan Museum of Art, object 09.68.424 (collection ID 218374).
+Handkerchief, possibly designed by Emma Radford; British, Devon, Honiton;
+second half of the nineteenth century. Linen and cotton, bobbin lace.
+Credit: Purchase by subscription, 1909.
+
+The Met marks this photograph Public Domain under its Open Access program.
+https://www.metmuseum.org/art/collection/search/218374
+Source image: https://collectionapi.metmuseum.org/api/collection/v1/iiif/218374/488413/main-image
+
+The original JPEG is retained unchanged. honiton-white-trim.png is a derivative:
+its gray mounting board is keyed to transparency, yarn color is neutralized to
+white, and an intact outer leaf edge is turned inward and reflected for tiling.
+Photographed thread structure and leaf silhouettes are retained. No AI image
+generation or synthetic lace drawing is used. Rebuild with scripts/build-lace.mjs.
+Only the cloth beyond the viewport is cropped; the inner edge follows the fabric.
+
+Derived PNG SHA-256:
+d91910aa084b1c207231250d99ec748e565c5381625feb4d79c84172fcdc3554
+
+Bundled JPEG SHA-256:
+beeecbea801b703dee652f6770c331c7f5c4654cdc609ca69a7d82e6dcad398a
+
+Blush woven cloth derivative
+blush-woven-cloth.png uses a crop from the woven center of the same photograph.
+Broad capture lighting is removed; the photographed yarn and fiber detail is
+tinted blush pink and reflected into a seamless repeat. Rebuild with
+scripts/build-cloth.mjs. No AI-generated imagery is used.
+SHA-256: b48dd4b7148ffb0fd9e07586433e54fdb0256e3403bc4910399e894f87d5594e

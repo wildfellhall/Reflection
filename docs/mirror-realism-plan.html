@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Victorian mirror material and carving plan</title>
+  <style>
+    :root { color-scheme: light; background: #faf7f2; color: #302d29; font: 17px/1.65 Georgia,serif; }
+    * { box-sizing: border-box; }
+    body { max-width: 1080px; margin: 0 auto; padding: 48px 30px 80px; }
+    h1,h2,h3 { line-height: 1.2; font-weight: 500; }
+    h1 { font-size: clamp(32px,5vw,48px); max-width: 800px; }
+    h2 { font-size: 29px; border-top: 1px solid #d7cdc0; padding-top: 28px; margin-top: 48px; }
+    h3 { font-size: 22px; margin-top: 30px; }
+    a { color: #71542f; text-underline-offset: 3px; }
+    p { max-width: 900px; } li { margin: 9px 0; }
+    .meta,figcaption,table,code,nav,.status { font-family: system-ui,sans-serif; font-size: 14px; }
+    .meta { color: #6c6255; } .status { padding: 16px 20px; background: #f0e9df; border-left: 3px solid #998160; }
+    nav { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 24px 0; }
+    .references { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 28px; }
+    figure { margin: 0; } figure img { width: 100%; height: 390px; object-fit: contain; background: #fff; border: 1px solid #e5ded4; }
+    figcaption { padding: 10px 0; line-height: 1.55; }
+    figcaption strong { display: block; margin-bottom: 6px; }
+    .detail img { height: 250px; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; line-height: 1.6; }
+    th,td { text-align: left; vertical-align: top; padding: 12px; border-bottom: 1px solid #d7cdc0; }
+    th { background: #f0e9df; font-weight: 600; }
+    code { background: #eee8df; padding: 2px 4px; overflow-wrap: anywhere; }
+    .diagram { width: 100%; height: auto; border: 1px solid #d7cdc0; background: #fff; }
+    .table-wrap { overflow-x: auto; }
+    @media(max-width:650px) { body { padding: 25px 18px 50px; } .references { grid-template-columns: 1fr; } figure img { height: 360px; } th,td { padding: 8px; } }
+    @media print { body { max-width: none; padding: 0; font-size: 11pt; } nav { display: none; } figure, tr { break-inside: avoid; } a { color: inherit; } h2 { break-after: avoid; } }
+  </style>
+</head>
+<body>
+  <p class="meta">Reflection project · 7 November 2026 · Research and implementation plan</p>
+  <h1>Aged silvered glass and Victorian mirror ornament</h1>
+  <p>The mirror should read first as an old, polished object: reflective silver beneath thick beveled glass, surrounded by substantial gilt metalwork. Age needs a location, a scale and a material response. The next improvement should come from those relationships, rather than increasing the amount of noise.</p>
+  <p class="status"><strong>Latest implementation:</strong> the camera-dominant shared radiance field has been replaced by distinct glass, polished-silver and scattered-silver responses. Each captured frame is decoded once into a linear-light mip pyramid. Intact polish resolves subdued detail; broader returns sample a coarser footprint. Front glass has its own much weaker camera response and preserves glints over missing silver. A second internal return now intersects and samples a different rear position before exiting. The silver's bright reflections retain priority. Separate 768 × 1024 front and rear maps still control normals, thickness, scratches, silver coverage, tarnish and roughness. The approved gold frame, white naturally edged lace and woven pink cloth remain unchanged. The captured <a href="https://polyhaven.com/a/solitude_interior">Solitude Interior</a> environment supplies the sheen.</p>
+  <p class="status"><strong>Priority correction:</strong> the user explicitly prefers chrome shine and aged silver over a clearly visible face. A deliberate 22% chromium finish blend remains for that appearance. The earlier proposal to remove chromium is therefore deferred. The diagnostic table below records the <em>previous baseline</em>; the remaining plan is research and future work, not a claim that every proposed technique has been implemented. Curvature-aware metal wear, detailed sculpted assets, a full microfacet layer model and calibrated full-room reflection remain outstanding. The current roughness convolution is an approximation; it is not a measured BSDF or a chemical corrosion simulation.</p>
+  <nav aria-label="Plan contents"><a href="#references">Photographic references</a><a href="#diagnosis">Current limitations</a><a href="#glass">Glass plan</a><a href="#frame">Frame plan</a><a href="#sequence">Implementation sequence</a><a href="#validation">Acceptance criteria</a></nav>
+
+  <h2>Implemented layer separation</h2>
+  <p><a href="https://pbr-book.org/4ed/Light_Transport_II_Volume_Rendering/Scattering_from_Layered_Materials">PBRT's layered-material treatment</a> distinguishes interface scattering from transport through the material between interfaces. That separation informs this implementation; the realtime shader uses deterministic reflection cones and two explicit internal returns, not PBRT's stochastic solver. The differing camera weights are deliberate appearance choices because the webcam and bundled HDR do not describe one calibrated scene.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Path</th><th>What it resolves</th><th>What gives it a distinct response</th></tr></thead>
+    <tbody>
+      <tr><td>Front glass</td><td>Fine environmental glints; very weak live detail</td><td>Front normals, shallow scuffs and dielectric Fresnel. Persists over missing silver.</td></tr>
+      <tr><td>Polished silver</td><td>Subdued, sharper live detail within reflected lighting</td><td>Refracted rear intersection, silver relief, local coverage and tarnish. Bright glints reserve more of their light for the metal.</td></tr>
+      <tr><td>Scattering shoulder</td><td>Broader reflected lighting and lower-frequency camera information</td><td>Normalized angular spread and coarser linear-light camera mips. Increasing roughness reduces the resolved core.</td></tr>
+      <tr><td>Second internal return</td><td>A faint displaced reflection</td><td>An extra glass/silver path with its own rear position, coating sample, exit direction and attenuation. Higher orders reuse this second exit.</td></tr>
+      <tr><td>Exposed backing</td><td>Dark, irregular silver loss</td><td>Diffuse environmental illumination and no direct live image. It emits no light.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Checks cover analytical slab energy, front reflection after complete silver loss, roughness-dependent spreading, separate live responses, and linear-light mip filtering. Photographic previews cover normal, dim and bright simulated capture at desktop and mobile sizes, both stationary and tilted. The finite image plane, RGB model and local-facet intersections remain approximations; perceptual realism is not established by those numerical checks.</p>
+
+  <h2 id="references">1. Photographic references and their specific uses</h2>
+  <p>The design direction remains an ornate late nineteenth-century hand mirror with foliage, open scrollwork and a cherubic figure. The references serve different purposes; their motifs should not all be combined into one frame. Click each photograph to examine its detail.</p>
+  <div class="references">
+    <figure>
+      <a href="../artifacts/references/cooper-hewitt-1890-brass.jpg"><img src="../artifacts/references/cooper-hewitt-1890-brass.jpg" alt="Brass hand mirror with a broad cut bevel and fine continuous scroll relief"></a>
+      <figcaption><strong>Cooper Hewitt brass mirror, catalogued circa 1890</strong>Dense scrolling relief sits within a continuous band. The photograph shows a broad cut bevel, restrained brass color, isolated spots and fine surface marks. Use it for bevel depth, relief hierarchy and wear scale, not its entire ornamental vocabulary. <a href="https://images.collection.cooperhewitt.org/187984_3339756d650ee123_x.jpg">Museum photograph</a>; <a href="https://commons.wikimedia.org/wiki/File:Hand_Mirror,_ca._1890_(CH_18660743).jpg">catalogue metadata preserved on Commons</a>. The museum catalogue endpoint was unavailable; the ca. 1890 date and cast-brass attribution are reported metadata.</figcaption>
+    </figure>
+    <figure>
+      <a href="../artifacts/references/morphets-1887-back.jpg"><img src="../artifacts/references/morphets-1887-back.jpg" alt="Reverse of an 1887 silver hand mirror with low relief cherub heads and feathered wings"></a>
+      <figcaption><strong>Edward Brown mirror, catalogued London 1887</strong>The cherubs occupy the <em>reverse</em>. Their cheeks, hair and wings transition into shared shallow relief. Use these relationships to study small figure anatomy; do not mistake a decorated back for the reflective face. <a href="https://www.easyliveauction.com/catalogue/lot/be5f47502e1f2f0fccc466aaa1967477/0af8d24542e81eb9357e7ef448a6646f/fine-art-antique-followed-by-fine-wine-whisky-and-vi-lot-182/">Morphets catalogue, lot 182</a>. Attribution is the auctioneer's.</figcaption>
+    </figure>
+    <figure class="detail">
+      <a href="../artifacts/references/morphets-1887-relief.jpg"><img src="../artifacts/references/morphets-1887-relief.jpg" alt="Close view of a silver mirror handle with domed foliage, stippled ground and raised flower finial"></a>
+      <figcaption><strong>Handle detail from the same mirror</strong>Broad, rounded leaf lobes emerge from the handle; fine chasing and stippling distinguish recessed ground from polished relief. The current renderer needs this difference between overall volume and small tool marks.</figcaption>
+    </figure>
+    <figure class="detail">
+      <a href="../artifacts/references/morphets-1887-detail.jpg"><img src="../artifacts/references/morphets-1887-detail.jpg" alt="Oblique view of the reflective face, revealing the glass bevel and thin surrounding bezel"></a>
+      <figcaption><strong>Oblique view of the same mirror</strong>The bevel, bezel and case have separate thicknesses. The edge catches light without a painted white outline. Use this view to check construction; the silver finish is not a prescription for our gold frame.</figcaption>
+    </figure>
+    <figure>
+      <a href="../artifacts/references/1896-mirror.jpg"><img src="../artifacts/references/1896-mirror.jpg" alt="Gilt hand mirror with a reaching putto in an open handle and conspicuous silvering loss"></a>
+      <figcaption><strong>Openwork figure and aged glass reference</strong>The existing <a href="https://www.icollector.com/Ornate-Victorian-Hand-Mirror_i11128592">Showtime reference</a> supplies the integrated reaching pose and conspicuous backing loss. Its frame has broad metal forms enclosing deliberate openings. “1896” is the lot number, not a manufacturing date. Its heavy damage is an upper comparison, not the target coverage.</figcaption>
+    </figure>
+    <figure>
+      <a href="../artifacts/references/vienna-hand-mirror.jpg"><img src="../artifacts/references/vienna-hand-mirror.jpg" alt="Vienna gilt hand mirror with small figures integrated into the crest and fine rope edging"></a>
+      <figcaption><strong>Scale and restraint of figures</strong>The <a href="https://www.hutchinsonscott.co.uk/auction/lot/100-a-late-19th-century-vienna-porcelain-and-gilt-metal-miniature-hand-mirror/?lot=31101&amp;sd=1">Vienna mirror, catalogued late nineteenth century</a>, keeps the crest figures small relative to the oval. Use its hierarchy and rope edging as a check against oversized, independent statuettes.</figcaption>
+    </figure>
+  </div>
+  <p>The <a href="https://www.vam.ac.uk/articles/metalworking-techniques">V&amp;A's metalworking guide</a> distinguishes casting, repoussé, chasing and engraving. The proposed frame is a cast copper-alloy object with a gilt appearance and chased detail. Relief should look formed into metal; fine veins need not be separate raised wires.</p>
+  <p>The <a href="https://art.thewalters.org/object/44.990/">Walters mirror of about 1900–1905</a> is a useful style boundary: its catalogue distinguishes Art Nouveau enamel from a Louis XVI revival handle. “Victorian” does not specify one decorative vocabulary. Keep our foliate, figural composition coherent rather than adding every period motif encountered.</p>
+
+  <h2 id="diagnosis">2. Diagnosis of the previous baseline</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Previous implementation</th><th>Visible consequence</th><th>Priority</th></tr></thead>
+    <tbody>
+      <tr><td>Silver loss follows normalized oval radius plus value noise and is composited after the clean glass calculation.</td><td>The damage reads as a noisy ring. It has little evidence of separate backing, tarnish and surface layers.</td><td>First</td></tr>
+      <tr><td>Wiping marks use one repeating line pattern and add brightness directly.</td><td>Marks can look uniformly scratched or luminous instead of catching a particular reflected light.</td><td>First</td></tr>
+      <tr><td>The glass retains a 2.5% chromium blend. Its environment rotation and local highlights are independent of the frame's environment.</td><td>Metal and glass can imply different lighting. A small chrome blend does not create a convincing silvered pane.</td><td>First</td></tr>
+      <tr><td>Leaves and constant-profile scrolls are repeated around the ellipse. Figure parts intersect rather than forming one sculpted surface.</td><td>The frame resembles an assembly of ornaments. The putto is still too slender and segmented.</td><td>Second</td></tr>
+      <tr><td>Metal wear uses noise plus absolute local Z as a proxy for exposed high points.</td><td>Recesses at the front of the object can receive the same wear as exposed ridges. A changed pose can invalidate that proxy.</td><td>Second</td></tr>
+    </tbody>
+  </table></div>
+  <p>Preserve actual oval bevel geometry, linear-light calculations, front and rear optical paths, correct camera proportions, a minimal interface and local-only camera handling. Camera visibility is intentionally secondary to the material.</p>
+
+  <h2 id="glass">3. Build one coherent aged-glass material</h2>
+  <h3>Choose the backing before choosing the damage</h3>
+  <p>Use <strong>silvered glass</strong> as the working material. Williamstown Art Conservation Center documents the nineteenth-century coexistence of silver and tin–mercury mirrors, and distinguishes warm tarnish in silvered mirrors from the blue-toned deterioration of tin–mercury mirrors. Those are different material histories. The photograph alone does not establish a particular object's backing chemistry. This project chooses a warm aged-silver appearance rather than combining both processes. <a href="https://williamstownart.org/wp-content/uploads/2019/03/Spring2010_Mercury-Amalgam-Mirrors.pdf">Conservation reference, pages 24–25</a>.</p>
+
+  <svg class="diagram" viewBox="0 0 960 290" role="img" aria-labelledby="stack-title stack-description">
+    <title id="stack-title">Proposed separation of front glass and rear silver damage</title>
+    <desc id="stack-description">An incident ray partly reflects at the front glass. The rest refracts through the glass toward the rear silver. Pits in the silver expose dark backing. Scratches remain on the front surface.</desc>
+    <rect x="490" y="47" width="132" height="190" fill="#e7eef0" stroke="#80969b"/>
+    <path d="M622 47V140M622 164V237" stroke="#92938b" stroke-width="6"/>
+    <rect x="636" y="47" width="18" height="190" fill="#51463a"/>
+    <path d="M190 82L490 144L308 207" fill="none" stroke="#ad8a43" stroke-width="3"/>
+    <path d="M490 144L619 164L490 184L370 228" fill="none" stroke="#527b88" stroke-width="3"/>
+    <path d="M487 84l6 12m-6 4l6 9" stroke="#53656b" stroke-width="2"/>
+    <g font-family="system-ui,sans-serif" font-size="15" fill="#302d29">
+      <text x="45" y="69">Observed room or camera plane</text><text x="50" y="238">Weak front-surface return</text>
+      <text x="452" y="30">Front glass</text><text x="519" y="263">3 mm starting thickness</text>
+      <text x="681" y="82">Rear silver layer</text><text x="681" y="152">Silver loss exposes backing</text>
+      <text x="681" y="220">Dark protective backing</text><text x="343" y="100">Surface scratch</text>
+    </g>
+    <path d="M624 77H670M623 151H670M649 214H670" stroke="#827565" fill="none"/>
+  </svg>
+  <p class="meta">Schematic only; layer widths and ray angles are exaggerated for legibility.</p>
+
+  <h3>Separate four fields with different optical jobs</h3>
+  <ol>
+    <li><strong>Surviving silver:</strong> a coverage field sampled at the ray's rear-surface intersection. Complete loss should remove that part of the silver return, reveal the dark backing and retain the front glass reflection. Partial edge coverage should be antialiased, not a semitransparent gray coating across the image.</li>
+    <li><strong>Tarnish around surviving silver:</strong> local absorption/color and roughness variation, related to nearby damage but not identical to it. Avoid bright bronze-colored holes. The <a href="https://www.canada.ca/en/conservation-institute/services/preventive-conservation/guidelines-collections/metal-objects.html">Canadian Conservation Institute</a> describes silver tarnish as silver sulfide; do not label it generic iron rust.</li>
+    <li><strong>Front-surface wear:</strong> sparse short scratches and overlapping curved wiping paths sampled at the entry surface. They should perturb normals and spread a reflected light, so visibility depends on lighting. Remove the current unconditional additive scratch brightness.</li>
+    <li><strong>Large-scale glass variation:</strong> a very low-amplitude, smooth height field, with normals derived from its derivatives. Constrain it using a reflected straight-line target. The pane should not read as a convex funhouse mirror or rippling water.</li>
+  </ol>
+
+  <h3>Use organized, unequal wear instead of evenly distributed speckles</h3>
+  <p>Create a deterministic mask generator in physical pane coordinates. Bake the broad fields once, using an actual distance-to-rim map and a few authored damage zones. The current normalized elliptical radius gives different physical band widths on the long and short axes. Evaluate distance to the modeled contour instead.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Scale</th><th>Proposed appearance</th><th>Starting range for visual trials</th></tr></thead>
+    <tbody>
+      <tr><td>Broad</td><td>Uneven edge recession with a few connected patches, interrupted by well-preserved sections.</td><td>2–12 mm patches; approximately 3–7% complete backing loss across the pane.</td></tr>
+      <tr><td>Intermediate</td><td>Small irregular islands, broken margins and warm transition zones, with some isolated interior defects.</td><td>0.3–2 mm clusters; another 8–15% partially altered silver, overlapping the edge zones.</td></tr>
+      <tr><td>Fine</td><td>Pinhole populations and low-contrast surface wear concentrated within selected regions.</td><td>0.08–0.3 mm features, filtered or omitted when smaller than a pixel.</td></tr>
+    </tbody>
+  </table></div>
+  <p>These are proposed artistic starting ranges, not measurements of the reference objects. Tune the shape and distribution before increasing coverage. Avoid mandatory bottom-heavy damage, because that would import a characteristic associated with amalgam deterioration into the chosen silver model.</p>
+  <p>Store coverage, tarnish amount and local roughness in a small linear-data texture, initially 1024 × 1024. Keep front scratches in a separate field. Use mipmaps and derivative-aware filtering, a fixed seed and the same masks after graphics-context recovery. Fine detail should settle into a stable surface at normal viewing size, rather than sparkle as the page resizes.</p>
+
+  <h3>Move the aging into the optical calculation</h3>
+  <p>Refactor the shader into distinct front-glass, surviving-silver and exposed-backing contributions. Apply rear coverage before calculating the returning radiance. Sample rear wear with the local coordinates of <code>backPoint</code>; sampling it with the front position, as now, places the damage at the wrong depth when the view changes.</p>
+  <p>Retain the tested Fresnel, refraction and absorption calculation. Replace the decorative chromium contribution on the pane with a silver backing response. The <a href="https://doi.org/10.1103/PhysRevB.6.4370">Johnson–Christy measurements</a> supply silver optical constants, while <a href="https://pbr-book.org/4ed/Reflection_Models/Conductor_BRDF">PBRT's conductor model</a> and <a href="https://pbr-book.org/4ed/Reflection_Models/Dielectric_BSDF">dielectric model</a> provide the interface treatment. Use the metal's index relative to the glass at that interface. Any RGB reduction remains an approximation; it should be documented and checked against the original clean-slab baseline.</p>
+  <p>Keep intact areas sharply reflective. Sample a wider reflected cone only where the local roughness requires it. Reuse the center sample elsewhere. Leave a large clear region through the center while letting some small isolated defects break the perfect oval of untouched glass.</p>
+
+  <h3>Make the glass and frame agree about the room</h3>
+  <p>Use one environment orientation, exposure and light arrangement for the glass and frame. Set Three.js's scene environment rotation from the same parameter that drives the glass's environment lookup. Compare a reflected bright window edge and adjacent dark furnishing in both materials. The curved metal compresses that scene into narrow highlights; the flatter pane should show broader, intelligible reflections.</p>
+  <p>Remove independent decorative light strips once a shared environment achieves the needed contrast. If an additional reflected light is needed, model it as one source seen by both materials. Keep the blush cloth background and avoid synthetic reflection ramps. Do not introduce global bloom, a uniform gray veil, an oil-slick film or strong rainbow bevels to manufacture shine. The rainbow-like marks in one reference photograph are not enough evidence to infer a specific optical mechanism.</p>
+  <p>The camera remains a single SDR image plane, so it cannot supply the user's complete HDR room or binocular viewpoint. This iteration improves material appearance around that constraint; it does not make face enhancement or head tracking a dependency.</p>
+
+  <h2 id="frame">4. Rebuild the frame as a coherent casting</h2>
+  <h3>Establish a hierarchy before sculpting details</h3>
+  <p>Keep the oval, a clearly defined bezel, a foliate crest, two principal side sprays and a figure-bearing neck. Replace the evenly spaced leaf-and-scroll ring with a few connected compositions that follow the oval. Let small leaves, beads and rope borders support those larger forms. An open region should have a deliberate outline and believable metal bridges around it.</p>
+  <p>Use the Vienna and Showtime objects for the overall figural/openwork direction. Use the Cooper Hewitt and Morphets close-ups for relief depth, continuity and tool-mark scale. Retain a warm brass/gilt finish; the silver reference informs shape and workmanship.</p>
+
+  <h3>Build continuous volumes and genuine negative space</h3>
+  <ol>
+    <li><strong>Primary sculpt:</strong> create connected subdivision-ready meshes for the crest, side sprays and handle neck. Give leaves finite thickness, rolled lobes and undercuts. Broaden scroll roots where they join the casting; taper them as they curl. Avoid constant circular tubing for every scroll.</li>
+    <li><strong>Putto:</strong> retain one reaching figure integrated into the neck. Block its head, chest, pelvis and bent limbs as one continuous form, with fuller childlike proportions. Check its silhouette in neutral clay at the final display size before adding hair or facial marks. The present slender, segmented figure is a placeholder, not a finished sculpt.</li>
+    <li><strong>Face and feathers:</strong> use shallow eyelids, a continuous brow/nose/cheek transition, grouped hair locks and overlapping rows of feathers. Read the 1887 reverse as a study of low relief, not a template to paste over the glass.</li>
+    <li><strong>Chased detail:</strong> place fine veins, short tool impressions and stippled ground into normal/roughness detail. Keep silhouette-changing features in geometry. A leaf vein should usually be a shallow modeled or baked ridge/groove, not a separate thick wire.</li>
+    <li><strong>Assembly:</strong> show a narrow seating seam between bezel and glass, a believable rim cross-section and local contact shadows. Avoid dark outlines painted around every ornament.</li>
+  </ol>
+  <p>Use an offline sculpt and retopology workflow for the figure and major ornaments, then import a local GLB with Three.js's existing GLTFLoader. This adds no runtime framework. If the local modeling toolchain is unavailable, author connected control meshes directly; do not substitute increasingly elaborate collections of ellipsoids. Keep the procedural code for borders and repeated small moldings where repetition is appropriate.</p>
+
+  <h3>Place wear where handling and construction make sense</h3>
+  <p>Replace absolute Z-based wear with local cavity, curvature and an authored contact mask. The grip and exposed ridges should carry handling polish and softened detail; sheltered grooves should retain deposits. Distinguish surviving gilt, exposed copper-alloy substrate and dirt. Pure gold itself does not corrode, as the <a href="https://www.canada.ca/en/conservation-institute/services/preventive-conservation/guidelines-collections/metal-objects.html">CCI guide</a> explains, so the gold finish should not receive an undifferentiated rust layer.</p>
+  <p>Use texture channels for cavity and wear, with actual shadowing for larger recesses. Reduce sharpness of genuinely worn geometry at contact points. Do not imitate wear merely by darkening the color while leaving every crest and edge razor-sharp. Start with restrained brown recesses and rubbed warm highlights; avoid generalized green verdigris.</p>
+
+  <h2 id="sequence">5. Implementation sequence and deliverables</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Stage</th><th>Concrete work</th><th>Review before proceeding</th></tr></thead>
+    <tbody>
+      <tr><td>0 — Complete</td><td>Replace isolated lace corners with one photographic border. Keep original local fabric asset, flat blush and minimal UI.</td><td>Desktop and portrait mobile screenshots; intact corners; no horizontal overflow.</td></tr>
+      <tr><td>1 — Wear study</td><td>Add a deterministic physical-scale mask generator and a development-only sheet showing clean glass, loss, tarnish and scratches separately.</td><td>Visible differences in scale and topology; no uniform dotted ring. Compare with the enlarged reference plate.</td></tr>
+      <tr><td>2 — Glass optics</td><td>Refactor <code>shaders.ts</code> around front and rear layers; rear-intersection wear coordinates; silver response; local roughness; non-emissive scratches.</td><td>Damage reads beneath polished glass. Clear areas preserve black/white contrast. Clean material retains analytical agreement.</td></tr>
+      <tr><td>3 — Shared lighting</td><td>Unify environment rotation/exposure and remove independent highlight styling where redundant. Tune the existing geometric bevel.</td><td>Glass and gold reflect the same scene. Both camera-off and active states show a convincing material.</td></tr>
+      <tr><td>4 — Sculpted frame</td><td>Replace major parts of <code>ornament.ts</code> with connected sculpted relief. Add curvature/cavity/contact data to <code>agedMetal.ts</code>.</td><td>Clay silhouette first, then an unaged metal pass, then aged metal. The figure and foliage must work before surface noise is added.</td></tr>
+      <tr><td>5 — Integration</td><td>Review complete object against the image sheet, tune restrained patina, measure GPU cost, verify capture and context recovery.</td><td>No regressions to size, camera permission, local media handling or the uncluttered page.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Keep Three.js and WebGL 2. A baked mask and local GLB are justified additions; a new rendering engine, runtime path tracer or face-processing dependency is not required for this pass. Start with one 1024² RGBA wear map plus a separate surface map, and profile before adding texture layers. Baked detail should replace expensive per-fragment procedural work where possible.</p>
+
+  <h2 id="validation">6. Acceptance criteria</h2>
+  <ol>
+    <li><strong>Material at normal size:</strong> with the camera off, intact silver, tarnished silver, backing holes and front glass are distinguishable. Enlarged views reveal extra detail without making the normal view resemble dirt sprinkled over a photograph.</li>
+    <li><strong>Stable depth:</strong> damage stays attached to the object when the video changes. In a controlled oblique test, rear silver damage and front scratches exhibit the displacement expected from their different depths.</li>
+    <li><strong>Lighting response:</strong> wiping marks become visible near a reflected source and subside elsewhere. No self-luminous scratch lines; no unrelated pixel brightening.</li>
+    <li><strong>Material dominance:</strong> even a black-to-white camera change must preserve the chrome reflection's light/dark structure. The live contribution remains correctly proportioned and visibly integrated with the material; local source changes stay local. Clean optical energy checks remain independent of this art direction. A full-loss fixture is implemented; quantitative angle-dependent wear validation remains future work.</li>
+    <li><strong>Frame construction:</strong> the neck reads as a substantial continuous casting, with a small cherub in shallow relief. Leaves have coherent lobes and roots, scrolls have changing cross-sections, and dark cavities agree with actual geometry. Evaluate against references in clay and metal, not only against the previous screenshot.</li>
+    <li><strong>Responsive composition:</strong> review 1280 × 900, 390 × 844, a narrow 320-pixel viewport and phone landscape. The lace remains a border, the mirror stays the dominant object, and there are no new panels or headings on the mirror page.</li>
+    <li><strong>Performance and lifecycle:</strong> measure representative hardware, targeting a 16.7 ms desktop and 33 ms mobile frame budget as goals rather than current claims. Preserve camera cancellation, Escape shutdown, no microphone, no uploads and context restoration. Check that fine patterns do not shimmer at DPR 1 and 2.</li>
+  </ol>
+  <p>Automated checks establish optical and functional behavior. Perceptual approval comes from the reference comparisons at both full size and close range. A clean clay model, a convincing unaged material and a well-placed aging field are separate review gates.</p>
+
+  <h2>7. Reference provenance and project files</h2>
+  <p>The four newly inspected photographs are saved under <code>artifacts/references/</code>: the Cooper Hewitt brass mirror and three Morphets views. The Cooper Hewitt image is served by the museum and has a public-domain designation on its Commons record; the auction photographs are research references, not production textures. No new reference imagery is included in the production website build. The only production textile remains the Met's public-domain Honiton photograph, credited in <code>public/textiles/NOTICE.txt</code>.</p>
+  <p>The plan and image board are separate project documentation. The mirror page remains only the mirror, its fabric border and necessary camera access/error UI. Source dates and visual observations are distinguished from proposed shader settings throughout this plan.</p>
+  <p><a href="../artifacts/material-preview.png">Current camera-off preview</a> · <a href="../artifacts/material-portrait.png">Simulated photographic reflection</a> · <a href="../artifacts/material-mobile.png">Mobile preview</a> · <a href="../README.md">Project README</a></p>
+</body>
+</html>

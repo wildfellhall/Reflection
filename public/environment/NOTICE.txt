@@ -1,0 +1,17 @@
+Solitude Interior — Andreas Mischok / Poly Haven
+Source: https://polyhaven.com/a/solitude_interior
+Original: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/solitude_interior_2k.hdr
+License: CC0 1.0 — https://polyhaven.com/license
+MD5 (original asset): e9dcfbd8b3c3d90582e4d0d6fa9c29fa
+SHA-256: e6fc8fe43fab9ea8b281303a24517c568c5c9f879e91e58eda004d917a6c0fe5
+
+Captured daylight architecture supplies the reflected environment. It is not a
+measurement of the user's surroundings. The application serves this file locally.
+The glass uses desaturated radiance and an art-directed highlight shoulder.
+
+Previous lighting reference, retained in artifacts/references/studio-small-09.hdr:
+Studio Small 09 — Sergej Majboroda / Poly Haven
+Source: https://polyhaven.com/a/studio_small_09
+Original: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr
+License: CC0 1.0
+MD5 (original asset): b056fea247bc84b81d2e0987d44c87d8
