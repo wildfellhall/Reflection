@@ -1,95 +1,83 @@
 import './style.css';
 import { MirrorRenderer } from './mirror/MirrorRenderer';
 import { MirrorCamera, type CameraState } from './camera';
+import { ReflectionPanel } from './reflection/ReflectionPanel';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <main aria-label="Mirror" aria-keyshortcuts="Escape">
+  <main aria-label="Mirror" aria-keyshortcuts="Escape Enter">
     <div class="lace-border" aria-hidden="true">
       <div class="lace-edge lace-top"></div><div class="lace-edge lace-right"></div>
       <div class="lace-edge lace-bottom"></div><div class="lace-edge lace-left"></div>
     </div>
-    <div id="mirror-stage"></div>
-    <div id="camera-prompt">
-      <button id="enable-camera" type="button">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="m8 6 1.5-3h5L16 6"/><circle cx="12" cy="13" r="3.5"/></svg>
-        <span>Enable camera</span>
-      </button>
-      <p id="camera-message" role="status" hidden></p>
-    </div>
+    <div id="mirror-stage" tabindex="0" aria-label="Mirror. Press Escape to stop the camera; Enter to resume."></div>
+    <div id="camera-prompt" hidden><p id="camera-message" role="status"></p></div>
     <span id="camera-status" class="visually-hidden" role="status" aria-live="polite"></span>
   </main>
 `;
 
+const host = document.querySelector('main')!;
+const stage = document.querySelector<HTMLDivElement>('#mirror-stage')!;
 const prompt = document.querySelector<HTMLDivElement>('#camera-prompt')!;
-const button = document.querySelector<HTMLButtonElement>('#enable-camera')!;
-const label = button.querySelector('span')!;
 const message = document.querySelector<HTMLParagraphElement>('#camera-message')!;
 const status = document.querySelector<HTMLSpanElement>('#camera-status')!;
 let renderer: MirrorRenderer | undefined;
 let camera: MirrorCamera | undefined;
 let cameraState: CameraState = 'off';
+let graphicsReady = false;
+const writing = new ReflectionPanel(host, expression => renderer?.setExpression(expression));
 
 function showMessage(text = '') {
-  message.textContent = text;
-  message.hidden = !text;
+  message.textContent = text; prompt.hidden = !text;
 }
-
 function updateState(state: CameraState, explanation?: string) {
-  cameraState = state;
-  document.body.dataset.camera = state;
-  prompt.hidden = state === 'live' && !explanation;
-  button.hidden = state === 'live';
-  button.classList.toggle('connecting', state === 'requesting');
-  label.textContent = state === 'requesting' ? 'Cancel' : state === 'error' ? 'Try again' : 'Enable camera';
-  showMessage(explanation);
-  status.textContent = state === 'live' ? 'Camera active. Press Escape to stop the camera.'
-    : state === 'requesting' ? 'Allow camera access in your browser.' : 'Camera off.';
+  cameraState = state; document.body.dataset.camera = state;
+  showMessage(explanation || (state === 'off' ? 'Touch the mirror or press Enter to resume.' : ''));
+  if (state === 'error') {
+    showMessage(`${explanation} Touch the mirror or press Enter to try again.`);
+    writing.cameraUnavailable();
+  }
+  status.textContent = state === 'live' ? 'Camera active. Expression cues are processed on this device. Press Escape to stop.'
+    : state === 'requesting' ? 'Allow camera access in your browser. Press Escape to cancel.' : 'Camera off.';
 }
 
 try {
-  renderer = new MirrorRenderer(document.querySelector<HTMLDivElement>('#mirror-stage')!, lost => {
-    if (lost) {
-      camera?.stop();
-      button.disabled = true;
-      showMessage('Restoring the mirror…');
-    } else {
-      button.disabled = false;
-      showMessage();
-    }
+  renderer = new MirrorRenderer(stage, lost => {
+    graphicsReady = !lost;
+    if (lost) { camera?.stop(); showMessage('Restoring the mirror…'); }
+    else showMessage('Touch the mirror or press Enter to resume.');
   });
+  graphicsReady = true;
   camera = new MirrorCamera({
     state: updateState,
-    video: video => renderer?.setVideo(video),
+    video: video => { renderer?.setVideo(video); writing.setVideo(video); },
     dimensions: (width, height) => renderer?.setVideoSize(width, height),
   });
-  // Returning visitors who already granted permission go straight to the mirror.
-  navigator.permissions?.query({ name: 'camera' as PermissionName }).then(permission => {
-    if (permission.state === 'granted' && cameraState === 'off') void camera?.start();
-  }).catch(() => { /* Browsers without camera permission queries use the button. */ });
+  // The browser's native permission prompt is the only camera permission UI.
+  // Reading starts automatically from the same stream used by the mirror.
+  void camera.start();
 } catch (error) {
   console.error('Mirror initialization failed:', error);
-  renderer?.dispose();
-  button.hidden = true;
+  renderer?.dispose(); graphicsReady = false;
   showMessage('This mirror needs WebGL 2. Enable graphics acceleration in your browser, then reload.');
+  writing.cameraUnavailable();
 }
 
-button.addEventListener('click', () => {
-  if (cameraState === 'requesting') camera?.stop();
-  else void camera?.start();
-});
-
-const stopOnEscape = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    camera?.stop();
-    button.focus({ preventScroll: true });
-  }
+const resume = () => {
+  if (graphicsReady && cameraState !== 'live' && cameraState !== 'requesting') void camera?.start();
+};
+const touchMirror = () => { if (writing.canSend) void writing.send(); else resume(); };
+const onKey = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') camera?.stop();
+  else if (event.key === 'Enter' && event.target === stage && writing.canSend) { event.preventDefault(); void writing.send(); }
+  else if (event.key === 'Enter' && !(event.target instanceof HTMLElement && event.target.closest('textarea,input,a,[contenteditable]'))) resume();
 };
 const stopOnLeave = () => camera?.stop();
-document.addEventListener('keydown', stopOnEscape);
+stage.addEventListener('click', touchMirror);
+document.addEventListener('keydown', onKey);
 window.addEventListener('pagehide', stopOnLeave);
 if (import.meta.hot) import.meta.hot.dispose(() => {
-  document.removeEventListener('keydown', stopOnEscape);
+  stage.removeEventListener('click', touchMirror);
+  document.removeEventListener('keydown', onKey);
   window.removeEventListener('pagehide', stopOnLeave);
-  camera?.dispose();
-  renderer?.dispose();
+  camera?.dispose(); renderer?.dispose(); writing.dispose();
 });

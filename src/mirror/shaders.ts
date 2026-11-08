@@ -34,6 +34,7 @@ uniform vec2 uStudioShift;
 uniform vec2 uSize;
 uniform vec2 uVideoSize;
 uniform vec3 uAbsorption;
+uniform vec3 uEmotionAbsorption;
 uniform vec3 uSilver;
 uniform vec3 uChromeN;
 uniform vec3 uChromeK;
@@ -218,7 +219,7 @@ void main() {
     vec3 exitPoint = backPoint + returning * toFront;
     float exitF = dielectricFresnel(max(dot(returning, N), 0.0), uIOR, 1.0);
     vec3 exiting = refract(returning, -N, uIOR);
-    vec3 absorption = exp(-uAbsorption * (toBack + toFront));
+    vec3 absorption = exp(-(uAbsorption + uEmotionAbsorption) * (toBack + toFront));
     vec2 wear = coating.rg;
     vec3 backing = uSilver * absorption * mix(vec3(1), vec3(.42, .37, .28), wear.y * .72);
     vec3 weight = (1.0 - entryF) * (1.0 - exitF) * backing;
@@ -242,7 +243,7 @@ void main() {
     vec3 secondExit = secondBack + secondReturning * secondToFront;
     float secondF = dielectricFresnel(max(dot(secondReturning, N), 0.0), uIOR, 1.0);
     vec3 secondRay = refract(secondReturning, -N, uIOR);
-    vec3 secondBacking = uSilver * exp(-uAbsorption * (secondToBack + secondToFront))
+    vec3 secondBacking = uSilver * exp(-(uAbsorption + uEmotionAbsorption) * (secondToBack + secondToFront))
       * mix(vec3(1), vec3(.42, .37, .28), secondCoating.g * .72) * (1.0 - secondCoating.r);
     vec3 secondWeight = (1.0 - entryF) * backing * exitF * (1.0 - secondF) * secondBacking
       / max(vec3(.001), 1.0 - secondF * secondBacking);
@@ -258,6 +259,7 @@ void main() {
     // leaving the cut bevel as glass. This is a deliberate polished-metal
     // finish blend rather than a claim that ordinary glass is chromium.
     vec3 metal = conductorFresnel(cosine) * backLight * mix(vec3(1), vec3(.72, .68, .57), wear.y);
+    metal *= exp(-uEmotionAbsorption * (toBack + toFront));
     color = mix(color, (1.0 - wear.x) * metal + wear.x * (entryF * frontLight + exposed),
       uFaceMetalness * face);
     if (uAntique > .5) color *= vec3(1.0, .995, .978);

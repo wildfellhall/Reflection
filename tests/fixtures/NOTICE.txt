@@ -1,0 +1,14 @@
+expression-portrait.png
+
+NASA public-domain photograph of Eileen Collins, distributed as the
+scikit-image astronaut sample. Used only as simulated camera input in tests.
+This test fixture is not included in the production build.
+
+Source file:
+https://raw.githubusercontent.com/scikit-image/scikit-image/v0.25.2/skimage/data/astronaut.png
+Source documentation and public-domain attribution:
+https://scikit-image.org/docs/stable/api/skimage.data.html#skimage.data.astronaut
+
+The tests check that a real model can detect a face and select a prompt.
+They do not assert the photographed person's actual emotional state, and
+do not establish accuracy across people, expressions or lighting conditions.

@@ -3,6 +3,7 @@ import { Box3, Vector3 } from 'three';
 import { createGlass, createFrame } from '../src/mirror/geometry';
 import { createOrnament } from '../src/mirror/ornament';
 import { MIRROR } from '../src/mirror/spec';
+import { EXPRESSION_ABSORPTION } from '../src/reflection/palette';
 
 test('the oval pane has a real cut bevel and a continuous cast metal surround', () => {
   const glass = createGlass(), chrome = createFrame();
@@ -69,7 +70,10 @@ test('rendered glass obeys slab energy and absorption; chrome matches normal-inc
     { angle: 0, thickness: .006, absorption: [...MIRROR.absorption], silver: [...MIRROR.silverReflectance] },
     { angle: 60, thickness: .006, absorption: [...MIRROR.absorption], silver: [...MIRROR.silverReflectance] },
     { angle: 80, thickness: .020, absorption: [18, 4, 9], silver: [...MIRROR.silverReflectance] },
-  ];
+  ].map(input => ({ ...input, emotion: [0, 0, 0] }));
+  for (const emotion of [EXPRESSION_ABSORPTION.happy, EXPRESSION_ABSORPTION.sad]) {
+    cases.push({ angle: 0, thickness: MIRROR.glassThickness, absorption: [...MIRROR.absorption], silver: [...MIRROR.silverReflectance], emotion: [...emotion] });
+  }
   const rendered = await page.evaluate(async ({ inputs, spec }) => {
     const threePath = '/node_modules/three/build/three.module.js';
     const shaderPath = '/src/mirror/shaders.ts';
@@ -94,7 +98,7 @@ test('rendered glass obeys slab energy and absorption; chrome matches normal-inc
       uAntique: { value: 0 },
       uStudioStrength: { value: 0 }, uStudioShift: { value: new T.Vector2() },
       uSize: { value: new T.Vector2(.62, .86) }, uVideoSize: { value: new T.Vector2(1280, 720) },
-      uAbsorption: { value: new T.Vector3() }, uSilver: { value: new T.Vector3() },
+      uEmotionAbsorption: { value: new T.Vector3() }, uAbsorption: { value: new T.Vector3() }, uSilver: { value: new T.Vector3() },
       uChromeN: { value: new T.Vector3(3.1071, 3.1812, 2.323) },
       uChromeK: { value: new T.Vector3(3.3314, 3.3291, 3.135) },
       uWorldRotation: { value: new T.Matrix3() },
@@ -115,10 +119,12 @@ test('rendered glass obeys slab energy and absorption; chrome matches normal-inc
       return [...pixel].slice(0, 3);
     };
     const glass = inputs.map(input => {
+      uniforms.uEmotionAbsorption.value.fromArray(input.emotion);
       uniforms.uAbsorption.value.fromArray(input.absorption);
       uniforms.uSilver.value.fromArray(input.silver);
       return read(input.angle, input.thickness);
     });
+    uniforms.uEmotionAbsorption.value.set(0, 0, 0);
     uniforms.uLayer.value = 1;
     const chrome = read(0, .006);
     uniforms.uLayer.value = 0;
@@ -132,6 +138,9 @@ test('rendered glass obeys slab energy and absorption; chrome matches normal-inc
     uniforms.uFaceMetalness.value = 0;
     coat.image.data[0] = 1; coat.needsUpdate = true;
     const lostSilver = read(0, .006);
+    uniforms.uEmotionAbsorption.value.set(.8, 5, 18);
+    const tintedLoss = read(0, .006);
+    uniforms.uEmotionAbsorption.value.set(0, 0, 0);
     env.image.data.fill(0); env.needsUpdate = true;
     const unlitBacking = read(0, .006);
 
@@ -170,7 +179,7 @@ test('rendered glass obeys slab energy and absorption; chrome matches normal-inc
     const lostResponse = liveResponse(1, 0);
     const scatteredResponse = liveResponse(0, 0, .35);
     material.dispose(); target.dispose(); env.dispose(); coat.dispose(); surface.dispose(); stripe.dispose(); liveSource.dispose(); renderer.dispose();
-    return { glass, chrome, polishedFace, lostSilver, unlitBacking, sharpPeak, sharpSide, roughPeak, roughSide, intactResponse, tarnishedResponse, lostResponse, scatteredResponse };
+    return { glass, chrome, polishedFace, lostSilver, tintedLoss, unlitBacking, sharpPeak, sharpSide, roughPeak, roughSide, intactResponse, tarnishedResponse, lostResponse, scatteredResponse };
   }, { inputs: cases, spec: MIRROR });
 
   cases.forEach((input, index) => {
@@ -180,11 +189,17 @@ test('rendered glass obeys slab energy and absorption; chrome matches normal-inc
     const f = (((cosI - n * cosT) / (cosI + n * cosT)) ** 2
       + ((n * cosI - cosT) / (n * cosI + cosT)) ** 2) / 2;
     input.absorption.forEach((absorption, channel) => {
-      const back = input.silver[channel] * Math.exp(-2 * input.thickness * absorption / cosT);
+      const back = input.silver[channel] * Math.exp(-2 * input.thickness * (absorption + input.emotion[channel]) / cosT);
       const expected = .5 * (f + (1 - f) ** 2 * back / (1 - f * back));
       expect(Math.abs(rendered.glass[index][channel] - expected)).toBeLessThan(1.5 / 255);
     });
   });
+  // Hue is selective absorption in the traced slab, with no added light.
+  expect(rendered.glass[4][0]).toBeGreaterThan(rendered.glass[4][2]);
+  expect(rendered.glass[5][2]).toBeGreaterThan(rendered.glass[5][0]);
+  for (const tinted of rendered.glass.slice(4)) for (const channel of tinted) {
+    expect(channel).toBeGreaterThan(.40); expect(channel).toBeLessThan(.5);
+  }
   const n = [3.1071, 3.1812, 2.323], k = [3.3314, 3.3291, 3.135];
   n.forEach((eta, channel) => {
     const expected = .5 * ((eta - 1) ** 2 + k[channel] ** 2) / ((eta + 1) ** 2 + k[channel] ** 2);
@@ -194,6 +209,7 @@ test('rendered glass obeys slab energy and absorption; chrome matches normal-inc
     const blended = expected * MIRROR.faceMetalness + rendered.glass[1][channel] * (1 - MIRROR.faceMetalness);
     expect(Math.abs(rendered.polishedFace[channel] - blended)).toBeLessThan(2 / 255);
     expect(rendered.polishedFace[channel]).toBeLessThanOrEqual(.5);
+    expect(Math.abs(rendered.tintedLoss[channel] - rendered.lostSilver[channel])).toBeLessThan(.001);
     expect(rendered.lostSilver[channel]).toBeGreaterThan(.015);
     expect(rendered.lostSilver[channel]).toBeLessThan(.04);
     expect(rendered.unlitBacking[channel]).toBeLessThanOrEqual(1 / 255);

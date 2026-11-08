@@ -17,6 +17,7 @@ page.on('console', event => { if (event.type() === 'error') errors.push(event.te
 await page.addInitScript(({ source, gain }) => {
   navigator.permissions.query = () => Promise.resolve({ state: 'prompt' });
   navigator.mediaDevices.getUserMedia = async () => {
+    await new Promise(resolve => { window.releaseTestCamera = resolve; });
     const canvas = document.createElement('canvas'); canvas.width = 720; canvas.height = 960;
     const ctx = canvas.getContext('2d');
     ctx.filter = `brightness(${gain})`;
@@ -28,10 +29,10 @@ await page.addInitScript(({ source, gain }) => {
     draw(); setInterval(draw, 33); return canvas.captureStream(30);
   };
 }, { source: 'data:image/png;base64,' + readFileSync(input).toString('base64'), gain });
-await page.goto('http://127.0.0.1:5173');
+await page.goto(process.env.REFLECTION_URL ?? 'http://127.0.0.1:5173');
 await page.waitForSelector('canvas[data-environment="ready"]');
 await page.screenshot({ path: `artifacts/${prefix}-preview.png` });
-await page.getByRole('button', { name: 'Enable camera' }).click();
+await page.evaluate(() => window.releaseTestCamera());
 await page.waitForFunction(() => document.body.dataset.camera === 'live');
 await page.locator('video').evaluate(video => new Promise(resolve => video.requestVideoFrameCallback(() => resolve())));
 await page.screenshot({ path: `artifacts/${prefix}-portrait.png` });

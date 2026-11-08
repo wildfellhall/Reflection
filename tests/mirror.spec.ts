@@ -1,19 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
 
-test.beforeEach(async ({ page }) => {
-  // Show the explicit camera gesture, while Chrome supplies a fake camera.
-  await page.addInitScript(() => {
-    const query = navigator.permissions.query.bind(navigator.permissions);
-    navigator.permissions.query = descriptor => descriptor.name === 'camera'
-      ? Promise.resolve({ state: 'prompt' } as PermissionStatus) : query(descriptor);
-  });
-});
-
 async function start(page: Page) {
   await page.goto('/');
   await expect(page.locator('canvas')).toHaveAttribute('data-environment', 'ready');
-  await page.getByRole('button', { name: 'Enable camera' }).click();
   await expect(page.locator('body')).toHaveAttribute('data-camera', 'live');
 }
 
@@ -25,7 +15,7 @@ async function glassMetrics(page: Page) {
   }));
 }
 
-test('only the mirror and permission gesture are visible before camera access', async ({ page }) => {
+test('the mirror starts automatically without buttons, headings or a modal', async ({ page }) => {
   const errors: string[] = [];
   const externalRequests: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -34,20 +24,21 @@ test('only the mirror and permission gesture are visible before camera access', 
   await page.goto('/');
   await expect(page.locator('canvas')).toBeVisible();
   await expect(page.locator('canvas')).toHaveAttribute('data-environment', 'ready');
-  await expect(page.locator('button:visible')).toHaveCount(1);
-  await expect(page.locator('h1,h2,header,footer,aside,select,input')).toHaveCount(0);
+  await expect(page.locator('button:visible')).toHaveCount(0);
+  await expect(page.locator('h1:visible,h2:visible,header:visible,footer:visible,aside:visible,select:visible,input:visible')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toBeHidden();
   await page.screenshot({ path: 'artifacts/mirror-desktop.png' });
   expect(errors).toEqual([]);
   expect(externalRequests).toEqual([]);
 });
 
-test('native media startup leaves only the mirror; Escape releases every track', async ({ page }) => {
+test('automatic media startup and Escape release every camera track', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', event => { if (event.type() === 'error') errors.push(event.text()); });
   await start(page);
   await expect(page.locator('#camera-prompt')).toBeHidden();
-  await expect(page.locator('button:visible')).toHaveCount(0);
+  await expect(page.locator('button')).toHaveCount(0);
   expect(await page.locator('video').evaluate(video => {
     const stream = video.srcObject as MediaStream;
     (window as any).testTracks = stream.getTracks();
@@ -55,7 +46,7 @@ test('native media startup leaves only the mirror; Escape releases every track',
   })).toMatchObject({ audio: 0, width: 1920, height: 1080 });
   await page.screenshot({ path: 'artifacts/mirror-camera.png' });
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Enable camera' })).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-camera', 'off');
   expect(await page.evaluate(() => (window as any).testTracks.every((track: MediaStreamTrack) => track.readyState === 'ended'))).toBe(true);
   expect(await page.locator('video').evaluate(video => video.srcObject)).toBeNull();
   expect(errors).toEqual([]);
@@ -71,9 +62,8 @@ test('denied camera access gives a recoverable message', async ({ page }) => {
     };
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Enable camera' }).click();
   await expect(page.locator('#camera-message')).toContainText('Camera access is blocked');
-  await page.getByRole('button', { name: 'Try again' }).click();
+  await page.keyboard.press('Enter');
   await expect(page.locator('#camera-prompt')).toBeHidden();
 });
 
@@ -89,8 +79,8 @@ test('cancelling a pending permission request stops a late-arriving stream', asy
     });
   });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Enable camera' }).click();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-camera', 'requesting');
+  await page.keyboard.press('Escape');
   await page.evaluate(() => (window as any).resolveCamera());
   await expect.poll(() => page.evaluate(() => (window as any).lateTracks.every((track: MediaStreamTrack) => track.readyState === 'ended'))).toBe(true);
   await expect(page.locator('body')).toHaveAttribute('data-camera', 'off');
@@ -163,7 +153,7 @@ test('the subdued camera contribution remains horizontally mirrored and undistor
   expect(Math.abs((maxX - minX) / (maxY - minY) - 1)).toBeLessThan(.035);
 });
 
-test('mobile portrait and landscape have no overflow or visible interface during use', async ({ page }) => {
+test('mobile portrait and landscape preserve the scene without overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await start(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight)).toBe(true);
@@ -188,7 +178,9 @@ test('WebGL failure offers an explanation without requesting a camera', async ({
   });
   await page.goto('/');
   await expect(page.locator('#camera-message')).toContainText('needs WebGL 2');
-  await expect(page.locator('button:visible')).toHaveCount(0);
+  await expect(page.locator('button')).toHaveCount(0);
+  await expect(page.locator('#writing-prompt')).toBeVisible();
+  expect(await page.locator('video').count()).toBe(0);
 });
 
 test('previously granted camera permission opens directly to the reflection', async ({ page }) => {
@@ -209,9 +201,8 @@ test('a lost graphics context stops capture and recovers the mirror', async ({ p
     setTimeout(() => extension.restoreContext(), 250);
   });
   await expect(page.locator('body')).toHaveAttribute('data-camera', 'off');
-  await expect(page.locator('#enable-camera')).toBeEnabled();
-  await expect(page.locator('#camera-message')).toBeHidden();
-  await page.getByRole('button', { name: 'Enable camera' }).click();
+  await expect(page.locator('#camera-message')).toContainText('resume');
+  await page.keyboard.press('Enter');
   await expect(page.locator('#camera-prompt')).toBeHidden();
 });
 

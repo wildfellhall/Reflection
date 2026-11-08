@@ -1,0 +1,26 @@
+Expression reading assets
+
+These assets are served locally, on demand. No camera images are uploaded.
+
+Human 3.3.6 by Vladimir Mandic (MIT):
+https://github.com/vladmandic/human
+See HUMAN-LICENSE.txt.
+
+blazeface.json / blazeface.bin:
+MediaPipe BlazeFace, distributed in Human's default model bundle.
+Original architecture: https://arxiv.org/abs/1907.05047
+Model credits: https://github.com/vladmandic/human/wiki/Models
+
+emotion.json / emotion.bin:
+Oarriaga facial-expression model, converted and quantized by Vladimir Mandic.
+Original project: https://github.com/oarriaga/face_classification
+MIT license, Copyright (c) 2017 Octavio. See EMOTION-LICENSE.txt.
+
+wasm/tfjs-backend-wasm*.wasm:
+TensorFlow.js WASM backend 4.22.0, Apache-2.0.
+https://github.com/tensorflow/tfjs/tree/tfjs-v4.22.0/tfjs-backend-wasm
+See TENSORFLOW-LICENSE.txt.
+
+Reproduce model/runtime copies with npm ci then npm run sync:expression.
+SHA256SUMS records the copies from the pinned packages. The license files are
+retained alongside them. No age, gender, identity or body model is shipped.

@@ -1,0 +1,4 @@
+These screenshots show the Reflection app using simulated camera video, not a user's camera.
+The camera fixture is the public-domain NASA photograph of astronaut Eileen Collins distributed by scikit-image.
+Source and attribution: https://scikit-image.org/docs/stable/api/skimage.data.html#skimage.data.astronaut
+See tests/fixtures/NOTICE.txt for the fixture's source details.

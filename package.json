@@ -4,16 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "sync:expression": "node scripts/sync-expression-assets.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "playwright test"
   },
   "dependencies": {
+    "@vladmandic/human": "3.3.6",
     "three": "^0.187.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
+    "@tensorflow/tfjs-backend-wasm": "4.22.0",
     "@types/pngjs": "^6.0.5",
     "@types/three": "^0.187.0",
     "pngjs": "^7.0.0",

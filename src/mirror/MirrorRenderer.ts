@@ -7,6 +7,9 @@ import { MIRROR } from './spec';
 import { mirrorFragment, mirrorVertex } from './shaders';
 import { createSurfaceFields } from './surfaceFields';
 import { CameraRadiance } from './CameraRadiance';
+import { VanityObjects } from './VanityObjects';
+import { EXPRESSION_ABSORPTION } from '../reflection/palette';
+import type { Expression } from '../reflection/expressions';
 
 export class MirrorRenderer {
   private renderer: THREE.WebGLRenderer;
@@ -27,9 +30,12 @@ export class MirrorRenderer {
   private dirty = true;
   private composition = new THREE.Box3();
   private studioTarget = new THREE.Vector2();
+  private emotionTarget = new THREE.Vector3();
+  private lastAnimationTime = performance.now();
   private reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   private placeholder = new THREE.DataTexture(new Uint8Array([128, 128, 128, 255]), 1, 1);
   private surfaceFields = createSurfaceFields();
+  private vanity = new VanityObjects();
 
   constructor(private host: HTMLElement, private onContextError: (lost: boolean) => void) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
@@ -62,6 +68,7 @@ export class MirrorRenderer {
       uVideoSize: { value: new THREE.Vector2(1920, 1080) },
       uViewDistance: { value: this.camera.position.z },
       uAbsorption: { value: new THREE.Vector3(...MIRROR.absorption) },
+      uEmotionAbsorption: { value: new THREE.Vector3() },
       uSilver: { value: new THREE.Vector3(...MIRROR.silverReflectance) },
       // Johnson & Christy (1974), interpolated at 650/550/450 nm. Three sampled
       // wavelengths are an RGB approximation, not a spectral integration.
@@ -103,6 +110,7 @@ export class MirrorRenderer {
     // Three inverts its environment orientation; our glass rotates lookup rays.
     this.scene.environmentRotation.y = -MIRROR.environmentRotation;
     this.composition.setFromObject(this.group);
+    this.scene.add(this.vanity.root);
 
     const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.ShadowMaterial({ color: '#795660', opacity: .18, depthWrite: false }));
     backdrop.position.set(0, -.05, -.008);
@@ -151,6 +159,8 @@ export class MirrorRenderer {
     const { width, height } = this.host.getBoundingClientRect();
     if (!width || !height) return;
     this.camera.aspect = width / height;
+    this.vanity.arrange(this.camera.aspect);
+    this.renderer.shadowMap.needsUpdate = true;
     const fov = THREE.MathUtils.degToRad(this.camera.fov);
     const center = this.composition.getCenter(new THREE.Vector3());
     const size = this.composition.getSize(new THREE.Vector3());
@@ -213,6 +223,13 @@ export class MirrorRenderer {
   };
   private animate = () => {
     if (this.disposed || this.contextLost) return;
+    const now = performance.now(), dt = Math.min((now - this.lastAnimationTime) / 1000, .1);
+    this.lastAnimationTime = now;
+    const tint = this.glass.uniforms.uEmotionAbsorption.value as THREE.Vector3;
+    if (tint.distanceToSquared(this.emotionTarget) > .000001) {
+      tint.lerp(this.emotionTarget, this.reducedMotion.matches ? 1 : 1 - Math.exp(-dt / 1.1));
+      this.dirty = true;
+    }
     const shift = this.glass.uniforms.uStudioShift.value as THREE.Vector2;
     if (shift.distanceToSquared(this.studioTarget) > .00000001) {
       shift.lerp(this.studioTarget, .12);
@@ -240,6 +257,11 @@ export class MirrorRenderer {
     }
     this.raf = requestAnimationFrame(this.animate);
   };
+
+  setExpression(expression: Expression | null) {
+    this.emotionTarget.set(...(expression ? EXPRESSION_ABSORPTION[expression] : [0, 0, 0] as const));
+    this.dirty = true;
+  }
 
   setVideo(video: HTMLVideoElement | null) {
     this.videoTexture?.dispose();
@@ -290,6 +312,7 @@ export class MirrorRenderer {
     materials.forEach(material => material.dispose());
     this.videoTexture?.dispose();
     this.cameraRadiance.dispose();
+    this.vanity.dispose();
     this.placeholder.dispose();
     this.surfaceFields.backing.dispose();
     this.surfaceFields.glass.dispose();
